@@ -1,0 +1,68 @@
+---
+title: "Principal Component Analysis"
+author: "Liam Abbott"
+date: "September 27, 2015"
+output: html_document
+---
+
+##Summary
+
+The wine dataset contains the values of 13 different chemical characteristics for each of
+180 different wines. After exploring the dataset using principal components analysis, it
+seems that the first five principal components are the most important. Many of the
+variables are almost entirely in the direction of the first principal component, while
+several others are in the direction of principal component two.
+
+##Analysis
+
+Before beginning principal components analysis on the dataset, it’s useful to visualize
+the relationships between different variables by looking at a few plots of the data. While
+not an exhaustive collection of all possible plots between pairs of variables, the plots
+shown below help visualize the relationships between some of the more strongly
+correlated pairs of variables in the dataset:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+list.of.packages = c("ggplot2",
+                     "gridExtra",
+                     "xtable")
+new.packages = list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) {
+  install.packages(new.packages)
+}
+for (i in 1:length(list.of.packages)) {
+  require(list.of.packages[i], character.only=TRUE)
+}
+```
+
+```{r, echo=FALSE}
+wine = read.table('wine.txt', header=T, sep="")
+plot1 = ggplot(wine, aes(x=Falavanoids, y=Total.phenols)) + 
+          geom_point(col="blue") + 
+          labs(x='Flavanoids', y='Total Phenols',title='Total Phenols vs. Flavanoids \n r = 0.8680') +
+          theme_bw()
+plot2 = ggplot(wine, aes(x=OD280.OD315, y=Total.phenols)) + 
+          geom_point(col="blue") + 
+          labs(x='OD280/OD315', y='Total Phenols',title='Total Phenols vs. OD280/OD315 \n r = 0.7056') +
+          theme_bw()
+plot3 = ggplot(wine, aes(x=Proline, y=Alcohol.content)) + 
+          geom_point(col="blue") +
+          labs(x='ProlineFGH', y='Alcohol', title='Alcohol vs. ProlineFGH \n r = 0.6449') +
+          theme_bw()
+plot4 = ggplot(wine, aes(x=OD280.OD315, y=Falavanoids)) +
+          geom_point(col="blue") +
+          labs(x='OD280/OD315',y='Flavanoids',title='Flavanoids vs. OD280/OD315 \n r = 0.7912') +
+          theme_bw()
+grid.arrange(plot1, plot2, ncol=2)
+grid.arrange(plot3, plot4, ncol=2)
+```
+
+To get an initial understanding of the center and spread of each of the 13 variables in
+the dataset, it’s useful to look briefly at the mean and standard deviation of each:
+
+```{r, echo=FALSE, results='asis'}
+df_table = data.frame("Variable" = colnames(wine), "Mean" = apply(wine, 2, mean), "Standard Deviation" = apply(wine, 2, sd))
+xtable_temp = xtable(df_table)
+digits(xtable_temp)[c(1, 3)] = 2
+print(xtable_temp, type='html', include.rownames=FALSE)
+```
+
