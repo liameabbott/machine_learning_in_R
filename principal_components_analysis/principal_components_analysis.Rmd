@@ -1,7 +1,6 @@
 ---
 title: "Principal Component Analysis"
 author: "Liam Abbott"
-date: "September 27, 2015"
 output: html_document
 ---
 
@@ -24,7 +23,9 @@ correlated pairs of variables in the dataset:
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 list.of.packages = c("ggplot2",
                      "gridExtra",
-                     "xtable")
+                     "xtable",
+                     "devtools",
+                     "Rcpp")
 new.packages = list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) {
   install.packages(new.packages)
@@ -32,6 +33,8 @@ if(length(new.packages)) {
 for (i in 1:length(list.of.packages)) {
   require(list.of.packages[i], character.only=TRUE)
 }
+install_github("vqv/ggbiplot")
+require(ggbiplot)
 ```
 
 ```{r, echo=FALSE}
@@ -57,12 +60,135 @@ grid.arrange(plot3, plot4, ncol=2)
 ```
 
 To get an initial understanding of the center and spread of each of the 13 variables in
-the dataset, it’s useful to look briefly at the mean and standard deviation of each:
+the dataset, it’s useful to look briefly at the mean and standard deviation of each:    
 
 ```{r, echo=FALSE, results='asis'}
 df_table = data.frame("Variable" = colnames(wine), "Mean" = apply(wine, 2, mean), "Standard Deviation" = apply(wine, 2, sd))
 xtable_temp = xtable(df_table)
 digits(xtable_temp)[c(1, 3)] = 2
-print(xtable_temp, type='html', include.rownames=FALSE)
+align(xtable_temp) = rep("c", 4)
+print(xtable_temp, type='html', include.rownames=FALSE,
+      sanitize.colnames.function = function(x) gsub("\\.", " ", x))  
+```
+    
+&nbsp;  
+
+As the summary figures above show, the variables in the dataset seem to be measured
+on different scales and likely with different units.   
+
+For this reason, principal components analysis on correlations makes the most sense in 
+this situation. It’s unlikely that there is any valuable information in the variance of 
+the variables that is lost by applying PCA to the correlation matrix rather than the 
+covariance matrix.
+
+Performing PCA on correlations on this dataset produced 13 principal components, each
+of which explained the following proportions of total variation in the data:  
+
+```{r, echo=FALSE, results='asis'}
+pca_out = princomp(wine, cor=TRUE)
+eig_vals = pca_out$sdev^2
+pve = eig_vals/sum(eig_vals)
+df_table = data.frame("Principal Component" = seq(1:13), "Percentage of Variation Explained" = pve*100)
+xtable_temp = xtable(df_table)
+digits(xtable_temp)[2] = 2
+align(xtable_temp) = rep("c", 3)
+print(xtable_temp, type='html', include.rownames=FALSE,
+      sanitize.colnames.function = function(x) gsub("\\.", " ", x))   
 ```
 
+&nbsp;  
+
+To visualize the information in the table above about the proportion of variation
+explained by each principal component, we can look at a scree plot showing the variance
+of each principal component on the y-axis:
+
+```{r, echo=FALSE}
+scree_plot = ggplot(data.frame(eig_vals = eig_vals, pc = seq(1:13)), aes(x=pc,y=eig_vals)) +
+              geom_point(shape=16, size=3, col="blue") + 
+              geom_line(col="darkgreen") +
+              labs(x='Principal Component', y='Variance of Component', title='Scree Plot') +
+              scale_x_continuous(breaks = seq(1, 13, 1)) +
+              scale_y_continuous(breaks = seq(0, 5, 0.5)) +
+              theme_bw()
+scree_plot
+```
+
+We can look at the same information in a different way by plotting the proportion of
+total variance in the dataset explained by each principal component and the cumulative
+proportion of variance explained up to each principal component in the plots below:  
+
+```{r, echo=FALSE}
+df_temp = data.frame(pc=seq(1:13), pve=pve, cpve=cumsum(pve))
+plot1 = ggplot(df_temp, aes(x=pc, y=pve)) +
+          geom_point(shape=16, size=3, col="blue") + 
+          geom_line(col="darkgreen") +
+          ylim(0,1) +
+          labs(x='Principal Component', y='Proportion of Variation Explained') +
+          theme_bw()
+plot2 = ggplot(df_temp, aes(x=pc, y=cpve)) + 
+          geom_point(shape=16,size=3, col="blue") +
+          geom_line(col="darkgreen") +
+          ylim(0,1) +
+          labs(x='Principal Component', y='Cumulative Proportion of Variation Explained') +
+          theme_bw()
+grid.arrange(plot1, plot2, ncol=2)
+```
+
+Looking at both the table and plots above, it seems that the first five principal
+components are the most important in this dataset. Together, they combine to explain
+about 80% of the variation in the data.  Going forward, we will focus the analysis on
+these first five principal components.
+
+After narrowing the focus to the first five principal components of the data, we can look
+more closely at the variable loadings of each of these five principal components:
+
+```{r, echo=FALSE, results='asis'}
+loadings = data.frame(round(pca_out$loadings[,1:5],4))
+colnames(loadings) = c("Prin Comp 1", "Prin Comp 2", 
+                       "Prin Comp 3", "Prin Comp 4",
+                       "Prin Comp 5")
+xtable_loadings = xtable(loadings)
+digits(xtable_loadings)[2:6] = 4
+align(xtable_loadings) = c('l', rep("c", 5))
+print(xtable_loadings, type='html')
+```
+
+&nbsp;  
+
+From the table above, the first principal component draws fairly equally on many of the
+variables, including malic acid, alkalinity of ash, total phenols, flavonoids, nonflavanoid
+phenols, proanthocyanins, hue, OD280/OD315, and prolineFGH.  
+
+Ash and color intensity are the only two variables that do contribute meaningfully to principal
+component 1. On the other hand, these two variables are the primary contributors to
+principal component 2, while several other variables are not much of a factor, including
+alkalinity of ash, total phenols, flavonoids, nonflavanoid phenols, and proanthocyanins.  
+
+Below, we can look at a plot of the data projected onto the first two principal
+components:  
+
+```{r, echo=FALSE}
+qplot(x=pca_out$scores[,1], y=pca_out$scores[,2], data=wine, label=row.names(wine), geom='text') +
+  theme_bw() +
+  labs(x='Principal Component 1', y='Principal Component 2')
+```
+
+
+The data generally follows a parabolic shape when projected onto the plot with principal
+component 1 on the horizontal axis and principal component 2 on the vertical axis.  
+
+Wines 81 and 116 in the dataset seem like they may be outliers, as does wine 159. These
+three points stray from the general pattern the rest of the data seems to be
+following.  
+
+One final plot to look at in this principal component analysis is a biplot showing the
+original 13 variables projected onto a plot of the first two principal components:  
+
+```{r, echo=FALSE}
+ggbiplot(pca_out, labels=rownames(wine)) + theme_bw()
+```
+
+From looking at the biplot, the variables ‘total phenols’, ‘flavanoids’, ‘proanthocyanins’,
+‘nonflavanoid phenols’, and ‘alcalinity of ash’ are almost entirely along the first
+principal component. Meanwhile, ‘ash’, ‘alcohol’, and ‘color intensity’ are mostly along
+the second principal component.
