@@ -1,0 +1,237 @@
+---
+title: 'Factor Analysis and Multidimensional Scaling'
+author: "Liam Abbott"
+output: html_document
+---
+
+###Summary  
+
+The wine dataset contains 13 different chemical composition measurements for 180
+wines. In this analysis, we use factor analysis and multidimensional scaling to reduce the
+dimensionality of the dataset and assess the quality-of-fit of these lower-dimensional
+representations.   
+
+The multidimensional scaling approach results in a model containing
+just two dimensions, while the factor analysis approach results in a model containing six
+different factors. Compare these to the five components used in a previous principal
+components analysis of this dataset.    
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+list.of.packages = c("ggplot2",
+                     "gridExtra",
+                     "xtable",
+                     "cluster",
+                     "stats")
+new.packages = list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) {
+  install.packages(new.packages)
+}
+for (i in 1:length(list.of.packages)) {
+  require(list.of.packages[i], character.only=TRUE)
+}
+```
+
+###Factor Analysis  
+
+Before beginning factor analysis, look at the correlation matrix of the variables in the
+wine dataset:  
+
+```{r, echo=FALSE, results='asis'}
+wine = read.table('wine.txt', header=TRUE, sep="")
+wine_cov = round(var(wine), 2)
+wine_cor = round(cor(wine), 2)
+df_temp = data.frame(wine_cor)
+df_temp[upper.tri(df_temp)] = NA
+xtable_temp = xtable(df_temp)
+digits(xtable_temp)[2:14] = 2
+align(xtable_temp) = c('l', rep('c', 13))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) seq(1:13))
+```
+
+&nbsp;  
+
+For convenience, the column names in the correlation matrix above have been
+compressed (1 = Alcohol, 2 = Malic acid, etc.). While some of the correlations are weak,
+it seems that there are enough strong correlations between variables to make factor
+analysis a reasonable undertaking.  
+
+The first step is to decide how many factors should be included in the model. Assuming
+normality, we can do this by looking at the likelihood ratio statistic for models fit with
+different numbers of factors. In the previous principal components analysis of the wine
+dataset, 5 principal components were included in the analysis based on the variance
+explained by each component.  
+
+Looking at the scree plot below, it seems reasonable to use 5 factors as a starting point
+here:  
+
+```{r, echo=FALSE}
+eig_vals = eigen(wine_cor)$values[1:8]
+scree_plot = ggplot(data.frame(eig_vals=eig_vals, factors=seq(1:8)), aes(x=factors, y=eig_vals)) +
+              geom_point(shape=16, size=3, col="blue") +
+              geom_line(col="darkgreen") + 
+              labs(x='Factor', y='Eigenvalues', title='Scree Plot') +
+              theme_bw() +
+              scale_x_discrete(breaks=seq(1:8)) +
+              scale_y_continuous(breaks=seq(0,5,0.5))
+scree_plot
+```
+
+Fitting a factor analysis model with 5 factors to the wine dataset results in a model with
+a likelihood ratio statistic of 39.75 on 23 degrees of freedom. The p-value of 0.0164
+indicates that the model with only 5 factors is perhaps a bit too restrictive.  
+
+A factor analysis model with 6 factors included results in a likelihood ratio statistic of
+17.79 on 15 degrees of freedom. The p-value of 0.274 indicates that this model fits the
+dataset fairly well. The variable loadings for each of the six factors are shown below:  
+
+```{r, echo=FALSE, results='asis'}
+wine_FA_5 = factanal(factors=5, x=wine)
+wine_FA_6 = factanal(factors=6, x=wine)
+df_temp = wine_FA_6$loading[1:13, 1:6]
+xtable_temp = xtable(df_temp)
+digits(xtable_temp)[2:7] = 2
+align(xtable_temp) = c('l', rep('c', 6))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('r', 'r\ ', x))
+```
+
+&nbsp;  
+
+The loadings in the table above are from the factor analysis model using the varimax
+rotation. As is clear from the loadings, for this dataset the varimax rotation does not
+make an interpretation of the factors easy, as each factor draws on many of the
+variables fairly significantly.   
+
+To help interpret the loadings, we can fit another factor
+analysis model with the promax rotation to get the following loadings:  
+
+```{r, echo=FALSE, results='asis'}
+wine_FA_6 = factanal(factors=6, x=wine, rotation='promax')
+df_temp = wine_FA_6$loading[1:13, 1:6]
+xtable_temp = xtable(df_temp)
+digits(xtable_temp)[2:7] = 2
+align(xtable_temp) = c('l', rep('c', 6))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('r', 'r\ ', x))
+```
+
+&nbsp;  
+
+Very roughly, it seems that each factor is drawing on these variables for the most part:  
+
+```{r, echo=FALSE, results='asis'}
+df_temp = data.frame(matrix(c(NA, 'x', 'x', NA, NA, NA,
+                       NA, NA, NA, NA, 'x', NA,
+                       NA, NA, NA, 'x', NA, NA,
+                       NA, 'x', NA, 'x', NA, NA,
+                       NA, NA, NA, NA, NA, 'x',
+                       'x', NA, NA, NA, NA, NA,
+                       'x', NA, NA, NA, NA, NA,
+                       'x', NA, NA, 'x', NA, NA,
+                       'x', NA, NA, NA, NA, NA,
+                       NA, 'x', 'x', NA, NA, NA,
+                       NA, NA, 'x', NA, 'x', NA,
+                       'x', NA, 'x', NA, NA, NA,
+                       NA, 'x', NA, NA, NA, NA),
+                     nrow=13, ncol=6, byrow=TRUE))
+colnames(df_temp) = c('Factor1', 'Factor2', 'Factor3', 'Factor4', 'Factor5', 'Factor6')
+xtable_temp = xtable(df_temp)
+align(xtable_temp) = c('l', rep('c', 6))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('r', 'r\ ', x))
+```
+
+&nbsp;  
+
+The 6 factors combine to explain about 77.9% of the total variance in the dataset, as
+shown in the chart below:  
+
+```{r, echo=FALSE, results='asis'}
+df_temp = data.frame(matrix(c(0.26, 0.14, 0.10, 0.10, 0.09, 0.08,
+                              0.26, 0.40, 0.50, 0.60, 0.69, 0.77),
+                            nrow=2, ncol=6))
+colnames(df_temp) = c('Factor1', 'Factor2', 'Factor3', 'Factor4', 'Factor5', 'Factor6')
+rownames(df_temp) = c('Proportion of Variation Explained', 'Cumulative Proportion of Variation Explained')
+xtable_temp = xtable(df_temp)
+align(xtable_temp) = c('l', rep('c', 6))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('r', 'r\ ', x))
+```
+
+&nbsp;  
+
+We can visualize the information in the chart by graphing the variance explained versus
+the factors:  
+
+```{r, echo=FALSE}
+pve = c(0.26, 0.14, 0.10, 0.10, 0.09, 0.08)
+df_temp = data.frame(factors=seq(1:6), pve=pve, cpve=cumsum(pve))
+plot1 = ggplot(df_temp, aes(x=factors, y=pve)) +
+          ylim(0,1) +
+          labs(x='Factors', y='Proportion of Variation Explained') +
+          geom_point(shape=16, size=3, col="blue") +
+          geom_line(col="darkgreen") +
+          theme_bw() +
+          scale_x_discrete(breaks=seq(1:6))
+plot2 = ggplot(df_temp, aes(x=factors, y=cpve)) +
+          ylim(0,1) +
+          labs(x='Factors', y='Cumulative Proportion of Variation Explained') +
+          geom_point(shape=16, size=3, col="blue") +
+          geom_line(col="darkgreen") +
+          theme_bw() +
+          scale_x_discrete(breaks=seq(1:6))
+grid.arrange(plot1, plot2, ncol=2)
+```
+
+
+###Multidimensional Scaling  
+
+In addition to factor analysis, we can also apply a multidimensional scaling approach to
+the wine dataset to see if the dissimilarities between the 13 variables in the dataset can
+be represented in a lower dimensional space. Using Kruskal’s scale to assess the quality
+of fit, a multidimensional scaling approach for one dimension up to six dimensions
+produces the following graph of fit quality versus number of dimensions:
+
+```{r, echo=FALSE}
+wine_dist = daisy(wine, stand=TRUE)
+
+wine_mds_1 = cmdscale(wine_dist, k=1)
+fitted_dist_1 = daisy(wine_mds_1)
+fit_qual_1 = sum((wine_dist - fitted_dist_1)^2)/sum(fitted_dist_1^2)
+
+wine_mds_2 = cmdscale(wine_dist, k=2)
+fitted_dist_2 = daisy(wine_mds_2)
+fit_qual_2 = sum((wine_dist - fitted_dist_2)^2)/sum(fitted_dist_2^2)
+
+wine_mds_3 = cmdscale(wine_dist, k=3)
+fitted_dist_3 = daisy(wine_mds_3)
+fit_qual_3 = sum((wine_dist - fitted_dist_3)^2)/sum(fitted_dist_3^2)
+
+wine_mds_4 = cmdscale(wine_dist, k=4)
+fitted_dist_4 = daisy(wine_mds_4)
+fit_qual_4 = sum((wine_dist - fitted_dist_4)^2)/sum(fitted_dist_4^2)
+
+wine_mds_5 = cmdscale(wine_dist, k=5)
+fitted_dist_5 = daisy(wine_mds_5)
+fit_qual_5 = sum((wine_dist - fitted_dist_5)^2)/sum(fitted_dist_5^2)
+
+wine_mds_6 = cmdscale(wine_dist, k=6)
+fitted_dist_6 = daisy(wine_mds_6)
+fit_qual_6 = sum((wine_dist - fitted_dist_6)^2)/sum(fitted_dist_6^2)
+
+fit = c(fit_qual_1, fit_qual_2, fit_qual_3, fit_qual_4, fit_qual_5, fit_qual_6)
+
+qplot(x=seq(1:6), y=fit) + 
+  labs(x='Dimensions', y='Fit Quality') +
+  geom_point(shape=16, size=3, col="blue") +
+  geom_line(col="darkgreen") +
+  ylim(0, 1) +
+  theme_bw()
+```
+
+While the quality of fit measure for 6 dimensions is an excellent 0.013 (lower the better in this case), 
+it appears that just 2 dimensions is also adequate and has the advantage of being more easily visualized, 
+as seen in the 2-dimensional representation of the wine dataset below:  
+
+```{r, echo=FALSE}
+qplot(x=wine_mds_2[,1], y=wine_mds_2[,2]) +
+  geom_point(col="blue") +
+  labs(x='First Dimension', y='Second Dimension') +
+  theme_bw()
+```
