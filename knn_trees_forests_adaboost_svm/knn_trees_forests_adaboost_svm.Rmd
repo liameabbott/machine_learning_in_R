@@ -1,0 +1,349 @@
+---
+title: "Classification Techniques: k-Nearest Neighbors, Trees, Random Forests, Adaboost, Support Vector Machines"
+author: "Liam Abbott"
+output: html_document
+---
+
+###Summary  
+
+In this report, we create models to classify Italian olive oils into their correct region of origin
+using a dataset of 575 sampled oils. Our goal is to predict the region of origin of each
+olive oil based on the chemical composition of the oils, as measured by the quantities of
+eight different fatty acids (palmitic, palmitoleic, stearic, oleic, linoleic, linolenic,
+arachidic, and eicosenoic) present in the oils.  
+
+In this report, several different classification methods are applied, including k-nearest neighbors, 
+classification trees, random forests, adaboost, and support vector machines. These methods are learned
+using a training dataset consisting of the first 90% of observations from each Area in the
+dataset, and evaluated by looking at the training and test classification error rates.  
+
+As we will see, all five of the previously mentioned classification algorithms perform
+extremely well when predicting the region of origin for an olive oil based upon the chemical composition.  
+
+###k-Nearest Neighbors
+
+The k-nearest neighbors model was learned several times using the training dataset for
+different values of *k* ranging from 1 to 20. Before fitting the model, the predictor
+variables were scaled in order to prevent the differing scales of the variables from
+impacting the kNN models. For each model fit with a different value of k, the training,
+test, and leave-one-out cross-validation error rates were calculated. These error rates are
+shown in the plot below:  
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+list.of.packages = c("ggplot2",
+                     "xtable",
+                     "MASS",
+                     "class",
+                     "rpart",
+                     "rpart.plot",
+                     "maboost",
+                     "e1071",
+                     "randomForest")
+new.packages = list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) {
+  install.packages(new.packages)
+}
+for (i in 1:length(list.of.packages)) {
+  require(list.of.packages[i], character.only=TRUE)
+}
+```
+
+```{r, echo=FALSE, results='asis'}
+#read in raw data
+olive = read.table('olive.txt', header=T, sep="")
+
+index = sort.int(olive$Area, index.return=T)$ix
+olive = olive[index,]
+
+#make region and area variables factors
+olive$Region = as.factor(olive$Region)
+olive$Area = as.factor(olive$Area)
+
+#separate into training and test sets
+n_obs = dim(olive)[1]
+n_cols = dim(olive)[2]
+M = array(0, c(9, 1))
+for (i in seq(1, n_obs))
+{
+  t = olive$Area[i]
+  M[t] = M[t]+1
+}
+L = floor(M*0.9)
+M_cumul = c(0, cumsum(M))
+select = NULL
+for (i in seq(1,9))
+{
+  a = M_cumul[i]+1
+  b = a+L[i]-1
+  select = c(select, seq(a, b))
+}
+train = olive[select,]
+test = olive[-select,]
+n_train = dim(train)[1]
+n_test = dim(test)[1]
+```
+
+```{r, echo=FALSE}
+n_k = 20
+knn_error_rates = matrix(rep(0, n_k*3), nrow=n_k)
+for (iii in 1:n_k)
+{
+  knn_train = knn(train = train[,3:10], 
+                  test=train[,3:10],
+                  cl=train[,1], k=iii)
+  tab = table(train$Region, knn_train)
+  knn_error_rates[iii,1] = 1 - sum(diag(tab))/sum(tab)
+  
+  knn_test = knn(train=train[,3:10], 
+                 test=test[,3:10],
+                 cl=train[,1],
+                 k=iii)
+  tab = table(test$Region, knn_test)
+  knn_error_rates[iii,2] = 1 - sum(diag(tab))/sum(tab)
+  
+  knn_cv = knn.cv(train=train[,3:10],
+                  cl=train[,1],
+                  k=iii)
+  tab = table(train$Region, knn_cv)
+  knn_error_rates[iii,3] = 1 - sum(diag(tab))/sum(tab)
+}
+
+df_temp = data.frame(x=rep(seq(1:n_k), 3),
+                     errors=c(knn_error_rates[,1], knn_error_rates[,2], knn_error_rates[,3]),
+                     group=c(rep('train', n_k), rep('test', n_k), rep('CV', n_k)))
+ggplot(df_temp, aes(x=x, y=errors)) +
+  geom_line(aes(color=group)) + 
+  xlim(1, n_k) +
+  labs(title='kNN Error Rates', x='k', y='error rate') +
+  theme_bw()
+```
+
+Based on the cross-validation error rates, it appears that the optimal k value is k = 5. Looking at the graph from right-to-left (least-complicated model to most-complicated model) *k* = 1 is the model with the lowest CV and test error rates. The classification tables for the training and test sets fit using the *k* = 1 model are as follows:  
+
+*kNN (k = 1) Training Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+knn_train = knn(train = train[,3:10], 
+                test=train[,3:10],
+                cl=train[,1], 
+                k=1)
+tab = table(train$Region, knn_train)
+xtable_temp = xtable(tab)
+colnames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+rownames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*kNN (k = 1) Test Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+knn_test = knn(train = train[,3:10], 
+                test=test[,3:10],
+                cl=train[,1], 
+                k=1)
+tab = table(test$Region, knn_test)
+xtable_temp = xtable(tab)
+colnames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+rownames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+###Classification Tree:  
+
+The classification tree model was fit using the training dataset and all 8 acid variables.
+However, as the schematic below shows, the only predictor variables actually relevant in the
+model were eicosenoic and linoleic acid content for each olive oil:  
+
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+region_tree = rpart(Region~., data=train[,-2])
+prp(region_tree, type=4, extra=1, clip.right.labs=FALSE)
+```
+
+As this tree classifies each training and test olive oils correctly and involves only two
+splits, there really is no need to prune the tree. Using this classification tree model, the
+classification tables for the training and test sets are as follows:  
+
+*Classification Tree Training Table:*  
+
+```{r, echo=FALSE, results='asis'}
+train_tree_predict = predict(region_tree, train[,3:10], type='class')
+tab = table(train$Region, train_tree_predict)
+xtable_temp = xtable(tab)
+colnames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+rownames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*Classification Tree Test Table:*  
+
+```{r, echo=FALSE, results='asis'}
+test_tree_predict = predict(region_tree, newdata=test[,3:10], type='class')
+tab = table(test$Region, test_tree_predict)
+xtable_temp = xtable(tab)
+colnames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+rownames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+###Random Forest:  
+
+The random forest model is preferred to a standard bagging approach in this situation
+due to the presence of significant correlation between some predictor variables. The
+random forest classification model was fit using the training dataset and all 8 acid
+variable. For each one of the $B = 100$ ???classification trees fit in the random forest, we consider $m \approx sqrt(p) = sqrt(8) \approx 3$ predictor variables at each split. The resulting model produced the following training and test set
+classification tables:
+
+```{r, echo=FALSE}
+rf_region = randomForest(Region~.-Area, data=train, mtry=3, ntree=100)
+```
+
+*Random Forest Training Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+train_forest_predict = predict(rf_region, newdata=train, type='class')
+tab = table(train$Region, train_forest_predict)
+xtable_temp = xtable(tab)
+colnames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+rownames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*Random Forest Test Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+test_forest_predict = predict(rf_region, newdata=test, type='class')
+tab = table(test$Region, test_forest_predict)
+xtable_temp = xtable(tab)
+colnames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+rownames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+We can construct a variable importance plot of the 8 variables used to fit the random forest model:  
+
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+varImpPlot(rf_region, pch=21, bg="blue", main="Random Forest Variable Importance Plot")
+```
+
+From this plot, we can see that Eicosenoic is clearly the most important variable, while Oleic, Linoleic, and Palmitic also appear fairly important. In the random forest model, Palmitoleic, Arachidic, Linolenic, and Stearic are less important than the first four variables mentioned.  
+
+###Adaboost:  
+
+We next consider a classification model learned using the boosting algorithm. We fit a
+depth-1 boosting model using $M = 100$ trees to the training set. The resulting model
+produced the following training and test set classification tables:  
+
+```{r, echo=FALSE, results='hide'}
+ada_region = maboost(Region~.-Area, data=train, iter=100, rpart.control(maxdepth=1))
+```
+
+*Adaboost Training Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+train_boost_predict = predict(ada_region, newdata=train, type='class')
+tab = table(train$Region, train_boost_predict)
+xtable_temp = xtable(tab)
+colnames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+rownames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*Adaboost Test Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+test_boost_predict = predict(ada_region, newdata=test, type='class')
+tab = table(test$Region, test_boost_predict)
+xtable_temp = xtable(tab)
+colnames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+rownames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+We construct a variable importance plot of the 8 variables used to fit the adaboost
+model:  
+
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+varplot.maboost(ada_region, pch=21, bg="blue", main="Adaboost Variable Importance Plot")
+```  
+
+Unlike the random forest model, we see that the most important variables when fitting
+the adaboost model are Oleic, Linoleic, Palmitoleic, and Stearic, while the less
+important variables are Palmitic, Arachidic, Eicosenoic, and Linolenic.  
+
+###Support Vector Machine:  
+
+The last classification method considered in this report is the support vector machine. We fit the SVM model to the training set using a radial kernel and cost 10,000. The resulting model produced the following training and test set classification tables:  
+
+```{r, echo=FALSE, results='hide'}
+svm_region = svm(Region~.-Area, data=train, kernel='radial', cost=10000)
+```
+
+*Support Vector Machine Training Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+train_svm_predict = predict(svm_region, newdata=train, type='class')
+tab = table(train$Region, train_svm_predict)
+xtable_temp = xtable(tab)
+colnames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+rownames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*Support Vector Machine Test Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+test_svm_predict = predict(svm_region, newdata=test, type='class')
+tab = table(test$Region, test_svm_predict)
+xtable_temp = xtable(tab)
+colnames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+rownames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+###Comparison of Classification Methods:  
+
+All 5 classification methods used in this report work perfectly when classifying olive oils
+into their regions of origin based on each oils' composition of the 8 different fatty acids
+in the data set. All 5 methods produce training and test error rates of 0.00% - not a
+single olive oil in either the training or test datasets are classified incorrectly by any of
+the methods.  
+
+The regions of origin for each olive oil are clearly separable using the acid compositions (particularly
+Eicosenoic and Oleic), so it is not surprising that the classification models in this report excel
+at classifying the training and test set olive oils.  
