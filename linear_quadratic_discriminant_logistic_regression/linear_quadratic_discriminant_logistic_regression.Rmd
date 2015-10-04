@@ -1,0 +1,520 @@
+---
+title: "Classification Techniques: Linear and Quadratic Discriminant Analysis, Logistic Regression"
+author: "Liam Abbott"
+output: html_document
+---
+&nbsp;  
+
+###Summary  
+
+The olive dataset analyzed in this report contains data on the chemical composition of 575
+Italian olive oils, measured by the percentage composition of eight different fatty acids found in
+the lipid fraction of the oil. Each olive oil has an associated Region and Area label indicating
+the respective region and area of origin for that particular olive oil.   
+
+In this analysis, we conduct linear and quadratic discriminant analyses and multivariate logistic 
+regression with the goal of assigning the correct region and area labels to each olive oil based on the
+composition of the fatty acids found in the oil.   
+
+The LDA, QDA, and logistic regression models are trained on a dataset consisting of the first 90% of 
+observations from each of the nine areas represented in the dataset. The models are then tested on a 
+test dataset consisting of the remaining 10% of observations from each of the nine areas. The training 
+dataset contains 505 observations and the test dataset contains 70 observations.  
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+list.of.packages = c("ggplot2",
+                     "gridExtra",
+                     "xtable",
+                     "nnet",
+                     "MASS",
+                     "scales",
+                     "GGally")
+new.packages = list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) {
+  install.packages(new.packages)
+}
+for (i in 1:length(list.of.packages)) {
+  require(list.of.packages[i], character.only=TRUE)
+}
+```
+
+While the LDA, QDA, and multivariate logistic regression models all performed well when classifying olive 
+oils by region of origin, LDA and QDA clearly outperformed multivariate logistic regression when classifying olive oils by area of origin. The training and test error rates for each classification model and task are given below:    
+
+```{r, echo=FALSE, results='asis'}
+#read in raw data
+olive = read.table('olive.txt', header=T, sep="")
+
+index = sort.int(olive$Area, index.return=T)$ix
+olive = olive[index,]
+
+#make region and area variables factors
+olive$Region = as.factor(olive$Region)
+olive$Area = as.factor(olive$Area)
+
+#separate into training and test sets
+n_obs = dim(olive)[1]
+n_cols = dim(olive)[2]
+M = array(0, c(9, 1))
+for (i in seq(1, n_obs))
+{
+  t = olive$Area[i]
+  M[t] = M[t]+1
+}
+L = floor(M*0.9)
+M_cumul = c(0, cumsum(M))
+select = NULL
+for (i in seq(1,9))
+{
+  a = M_cumul[i]+1
+  b = a+L[i]-1
+  select = c(select, seq(a, b))
+}
+train = olive[select,]
+test = olive[-select,]
+n_train = dim(train)[1]
+n_test = dim(test)[1]
+```
+
+
+```{r, echo=FALSE, warning=FALSE, results='hide'}
+#Region linear discriminant analysis
+lda_region_fit = lda(Region~Oleic+Eicosenoic, data=train)
+region_train_lda_preds = predict(lda_region_fit)$class
+region_train_actual = train[,1]
+region_test_lda_preds = predict(lda_region_fit, newdata=test)$class
+region_test_actual = test[,1]
+
+#Region quadratic discriminant analysis
+qda_region_fit = qda(Region~Oleic+Eicosenoic, data=train)
+region_train_qda_preds = predict(qda_region_fit)$class
+region_test_qda_preds = predict(qda_region_fit, newdata=test)$class
+
+#Region multivariate logisitc regression analysis
+log_region_fit = multinom(Region~Oleic+Eicosenoic, data=train)
+region_train_log_preds = predict(log_region_fit, newdata=train, "class")
+region_test_log_preds = predict(log_region_fit, newdata=test, "class")
+```
+
+
+```{r, echo=FALSE, warning=FALSE, results='hide'}
+#Area linear discriminant analysis
+lda_area_fit = lda(Area~.-Region, data=train)
+area_train_lda_preds = predict(lda_area_fit)$class
+area_train_actual = train[,2]
+area_test_lda_preds = predict(lda_area_fit, newdata=test)$class
+area_test_actual = test[,2]
+
+#Area quadratic discriminant analysis
+qda_area_fit = qda(Area~.-Region, data=train)
+area_train_qda_preds = predict(qda_area_fit)$class
+area_test_qda_preds = predict(qda_area_fit, newdata=test)$class
+
+#Area multivariate logistic regression
+log_area_fit = multinom(Area~.-Region, data=train)
+area_train_log_preds = predict(log_area_fit, newdata=train, "class")
+area_test_log_preds = predict(log_area_fit, newdata=test, "class")
+```
+
+
+```{r, echo=FALSE, results='asis'}
+region_lda_train_error = length(region_train_actual[region_train_actual != region_train_lda_preds])/n_train
+region_lda_test_error = length(region_test_actual[region_test_actual != region_test_lda_preds])/n_test
+
+region_qda_train_error = length(region_train_actual[region_train_actual != region_train_qda_preds])/n_train
+region_qda_test_error = length(region_test_actual[region_test_actual != region_test_qda_preds])/n_test
+
+region_log_train_error = length(region_train_actual[region_train_actual != region_train_log_preds])/n_train
+region_log_test_error = length(region_test_actual[region_test_actual != region_test_log_preds])/n_test
+
+area_lda_train_error = length(area_train_actual[area_train_actual != area_train_lda_preds])/n_train
+area_lda_test_error = length(area_test_actual[area_test_actual != area_test_lda_preds])/n_test
+
+area_qda_train_error = length(area_train_actual[area_train_actual != area_train_qda_preds])/n_train
+area_qda_test_error = length(area_test_actual[area_test_actual != area_test_qda_preds])/n_test
+
+area_log_train_error = length(area_train_actual[area_train_actual != area_train_log_preds])/n_train
+area_log_test_error = length(area_test_actual[area_test_actual != area_test_log_preds])/n_test
+
+df_temp = data.frame("Region Training"=percent(round(c(region_lda_train_error, region_qda_train_error,region_log_train_error), 4)),
+                     "Region Test" = percent(round(c(region_lda_test_error, region_qda_test_error, region_log_test_error), 4)),
+                     "Area Training" = percent(round(c(area_lda_train_error, area_qda_train_error, area_log_train_error), 4)),
+                     "Area Test" = percent(round(c(area_lda_test_error, area_qda_test_error, area_log_test_error), 4)))
+rownames(df_temp) = c("Linear Discriminant Analysis", "Quadratic Discriminant Analysis", "Logistic Regression")
+
+xtable_temp = xtable(df_temp)
+digits(xtable_temp)[2:5] = 3
+align(xtable_temp) = c('l', rep('c', 4))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+Overall, the task of classifying olive oils by area seemed to be harder than classifying by region,
+as the training and test error rates for area classification models tended to be higher.   
+
+This makes sense given that there are only 3 different regions of origin represented in the dataset,
+but 9 different areas of origin. There are likely several geographic ‘areas’ contained within each
+region, and so area classification is a more specific task.   
+
+The region classification error rates can be thought of as a lower bound on the area classification rates. 
+Assuming that multiple areas comprise each region, it would be impossible for area classification to be more 
+accurate than region classification given the same data.
+
+&nbsp;  
+
+###Region Analysis  
+
+The first part of this report will focus on the task of classifying the olive oils into one of 3
+possible regions of origin.  
+
+Before building the models outlined above, it’s useful to look at pairwise and parallel coordinates plots 
+of the data to visualize the class structure.  
+
+In each of the plots below, the colors correspond to the 3 different regions of origin found in the dataset:  
+
+```{r, echo=FALSE, fig.width=12, fig.height=8}
+ggpairs(train, 
+        columns=3:n_cols, 
+        diag='blank', 
+        colour='Region', 
+        axisLabels='internal',
+        lower=list(continuous='points'), 
+        upper=list(continuous='blank')) + theme_bw()
+ggparcoord(train, scale='globalminmax', columns=3:n_cols, groupColumn=1) +
+  xlab('acid') +
+  theme_bw()
+```
+
+Because the typical values of different acids vary so much, it’s difficult to gain any insight into
+the class structure in terms of individual acids by looking at the parallel coordinates plot
+containing all 8 acids.   
+
+It makes more sense to create several parallel coordinate plots with acids grouped by typical values.    
+
+The following graphs exclude Oleic acid, whose class structure can already be seen fairly clearly in 
+the parallel coordinates plot above:    
+
+```{r, echo=FALSE, fig.width=12, fig.height=6}
+plot1 = ggparcoord(train, scale='globalminmax', columns=c(3:7), groupColumn=1) +
+  xlab('acid') +
+  theme_bw()
+plot2 = ggparcoord(train, scale='globalminmax', columns=c(4:5, 8:10), groupColumn=1) +
+  xlab('acid') +
+  theme_bw()
+grid.arrange(plot1, plot2, nrow=1, ncol=2)
+```
+
+
+From these plots, it seems that Eicosenoic acid content clearly determines whether or not an
+olive oil is from region 1, as olive oils that are not from region 1 contain almost no Eicosenoic
+acid. In addition, it seems that olive oils from regions 2 and 3 have distinctly different Oleic
+acid content. Using these two variables, Eicosenoic and Oleic acid content, we should be able
+to build models capable of classifying the region a given olive oil is from with high accuracy.
+The analysis that follows focuses on these two variables.  
+
+Fitting a linear discriminant model to classify region of origin using the training data set and
+the Eicosenoic and Oleic variables, we get the following prior probabilities and group means:  
+
+```{r, echo=FALSE, results='asis'}
+prior_probs = c(round(length(region_train_actual[region_train_actual==1])/n_train, 2),
+                round(length(region_train_actual[region_train_actual==2])/n_train, 2),
+                round(length(region_train_actual[region_train_actual==3])/n_train, 2))
+oleic_mean = c(round(mean(train$Oleic[train$Region==1]), 2),
+               round(mean(train$Oleic[train$Region==2]), 2),
+               round(mean(train$Oleic[train$Region==3]), 2))
+eicosenoic_mean = c(round(mean(train$Eicosenoic[train$Region==1]), 2),
+                    round(mean(train$Eicosenoic[train$Region==2]), 2),
+                    round(mean(train$Eicosenoic[train$Region==3]), 2))
+df_temp = t(data.frame("Prior Probability" = prior_probs, 
+                       "Oleic Mean" = oleic_mean, 
+                       "Eicosenoic Mean" = eicosenoic_mean))
+colnames(df_temp) = c("Region 1", "Region 2", "Region 3")
+xtable_temp = xtable(df_temp)
+align(xtable_temp) = c('l', rep('r', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+In the training set, 57% of the olive oils were from region 1, while 16% were from region 2 and 
+26% from region 3. As suspected, region 1 olive oils have a mean Eicosenoic content much greater 
+than region 2 and region 3 olive oils. Region 3 olive oils have a mean Oleic acid content much greater 
+than region 1 and region 2 olive oils.  
+
+The classification rule seems to work well, as there are very few olive oils in the training or test
+datasets incorrectly classified, as seen in the tables below:  
+
+*LDA Training Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(region_train_lda_preds, region_train_actual))
+colnames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+rownames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*LDA Test Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(region_test_lda_preds, region_test_actual))
+colnames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+rownames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+6 out of 505 training set olive oils and 1 out of 70 test set olive oil were incorrectly classified by
+the LDA model, yielding a training error rate of 0.0119 and a test error rate of 0.0143.  
+
+In the plot below, we can see the data projected onto the two linear discriminants:  
+
+```{r, echo=FALSE, fig.width=12, fig.height=6}
+LD_1_train = predict(lda_region_fit)$x[,1]
+LD_2_train = predict(lda_region_fit)$x[,2]
+plot1 = ggplot(data=train, aes(x=LD_1_train, y=LD_2_train, color=Region)) +
+          geom_point(size=2) +
+          labs(x='LD 1', y='LD 2', title='LDA Region - Training') +
+          theme_bw()
+
+LD_1_test = predict(lda_region_fit, newdata=test)$x[,1]
+LD_2_test = predict(lda_region_fit, newdata=test)$x[,2]
+plot2 = ggplot(data=test, aes(x=LD_1_test, y=LD_2_test, color=Region)) +
+          geom_point(size=2) +
+          labs(x='LD 1', y='LD 2', title='LDA Region - Test') +
+          theme_bw()
+grid.arrange(plot1, plot2, nrow=1, ncol=2)
+```
+
+Fitting a quadratic discriminant model to classify region of origin, again using the training
+dataset and the Eicosenoic and Oleic variables, we get the following classification tables: 
+
+*QDA Training Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(region_train_qda_preds, region_train_actual))
+colnames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+rownames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*QDA Test Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(region_test_qda_preds, region_test_actual))
+colnames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+rownames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+The QDA model yielded a training error rate of 0.0099 and a test error rate of 0.0143. 5 out of
+505 training set olive oils and 1 out of 70 test set olive oils were misclassified by the QDA
+model, which is just a 1 training set olive oil improvement over the LDA model.  
+
+Fitting a multivariate logistic regression model to classify region of origin, again using the
+training dataset and the Eicosenoic and Oleic variables, we get the following classification
+tables:  
+
+*Logistic Regression Training Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(region_train_log_preds, region_train_actual))
+colnames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+rownames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*Logistic Regression Test Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(region_test_log_preds, region_test_actual))
+colnames(xtable_temp) = c("Region 1 Actual", "Region 2 Actual", "Region 3 Actual")
+rownames(xtable_temp) = c("Region 1 Predicted", "Region 2 Predicted", "Region 3 Predicted")
+align(xtable_temp) = c('l', rep('c', 3))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+The multivariate logistic regression model classified 3 out of 505 training olive oils and 1 out of
+70 test olive oils incorrectly, yielding a training error rate of 0.0059 and a test error rate of
+0.0143.  
+
+&nbsp;  
+
+###Area Analysis  
+
+As we did earlier, before building any models we look at pairwise and parallel coordinates plots
+of the data to visualize the class structure. In the plots below, the colors correspond to the nine
+different areas of origin found in the dataset:  
+
+```{r, echo=FALSE, fig.width=12, fig.height=8}
+ggpairs(train,
+        columns=3:n_cols,
+        diag='blank',
+        color='Area',
+        axisLabels='internal',
+        lower=list(continuous='points'),
+        upper=list(continuous='blank')) + theme_bw()
+ggparcoord(train,
+           scale='globalminmax',
+           columns=3:n_cols,
+           groupColumn=2) + xlab('acid') + theme_bw()
+```
+
+```{r, echo=FALSE, fig.width=12, fig.height=6}
+plot1 = ggparcoord(train,
+                   scale='globalminmax',
+                   columns=3:n_cols,
+                   groupColumn=2) + xlab('acid') + theme_bw()
+plot2 = ggparcoord(train,
+                   scale='globalminmax',
+                   columns=c(4:5, 8:10),
+                   groupColumn=2) + xlab('acid') + theme_bw()
+grid.arrange(plot1, plot2, nrow=1, ncol=2)
+```
+
+&nbsp;  
+
+Fitting an LDA model using the training dataset and all acids to predict the Area of origin for
+each olive oil, we get the following classification table (actual area in rows, predicted area in columns):
+
+*LDA Training Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(area_train_lda_preds, area_train_actual))
+colnames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+rownames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+align(xtable_temp) = c('l', rep('c', 9))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*LDA Test Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(area_test_lda_preds, area_test_actual))
+colnames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+rownames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+align(xtable_temp) = c('l', rep('c', 9))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+Out of the 505 training olive oils, 28 were classified into the incorrect area of origin by the
+LDA model. This corresponds to a training error rate of 0.0554. Out of the 70 test set olive
+oils, the LDA model incorrectly classified 7 olive oils, corresponding to a test error rate of 0.10.  
+
+In the plot below, we can see the data projected onto the first two linear discriminants:  
+
+```{r, echo=FALSE, fig.width=12, fig.height=6}
+LD_1_train = predict(lda_area_fit)$x[,1]
+LD_2_train = predict(lda_area_fit)$x[,2]
+plot1 = ggplot(data=train, aes(x=LD_1_train, y=LD_2_train, color=Area)) +
+          geom_point(size=2) +
+          labs(x='LD 1', y='LD 2', title='LDA Area = Training') +
+          theme_bw()
+LD_1_test = predict(lda_area_fit, newdata=test)$x[,1]
+LD_2_test = predict(lda_area_fit, newdata=test)$x[,2]
+plot2 = ggplot(data=test, aes(x=LD_1_test, y=LD_2_test, color=Area)) +
+          geom_point(size=2) +
+          labs(x='LD 1', y='LD 2', title='LDA Area = Test') +
+          theme_bw()
+grid.arrange(plot1, plot2, nrow=1, ncol=2)
+```
+
+&nbsp;  
+
+Fitting a QDA model using the training dataset and all eight acids to predict the area of origin
+for each olive oil, we get the following classification tables:  
+
+*QDA Training Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(area_train_qda_preds, area_train_actual))
+colnames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+rownames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+align(xtable_temp) = c('l', rep('c', 9))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*QDA Test Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(area_test_qda_preds, area_test_actual))
+colnames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+rownames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+align(xtable_temp) = c('l', rep('c', 9))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+Out of the 505 training olive oils, only 5 were incorrectly classified by the QDA model, while
+out of the 70 test olive oils, only 3 were incorrectly classified. This corresponds to a 0.0099
+training error rate and a 0.0429 test error rate – markedly better than the LDA model.  
+
+Fitting a multivariate logistic regression model to classify area of origin, again using the
+training dataset and all eight acids to predict the area of origin for each olive oil, we get the
+following classification tables:  
+
+*Logistic Regression Training Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(area_train_log_preds, area_train_actual))
+colnames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+rownames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+align(xtable_temp) = c('l', rep('c', 9))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+*Logistic Regression Test Classification Table:*  
+
+```{r, echo=FALSE, results='asis'}
+xtable_temp = xtable(table(area_test_log_preds, area_test_actual))
+colnames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+rownames(xtable_temp) = c('Area 1', 'Area 2', 'Area 3', 'Area 4', 'Area 5', 'Area 6', 'Area 7', 'Area 8', 'Area 9')
+align(xtable_temp) = c('l', rep('c', 9))
+print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('\\.', ' ', x),
+                                sanitize.rownames.function = function(x) gsub('\\.', ' ', x))
+```
+
+&nbsp;  
+
+Out of the 505 training olive oils, the multivariate logistic regression model incorrectly
+classified 82 olive oils and out of 70 test olive oils the model incorrectly classified 20 olive oils.
+This corresponds to a training error rate of 0.1624 and a test error rate of 0.2857.  
+
+
