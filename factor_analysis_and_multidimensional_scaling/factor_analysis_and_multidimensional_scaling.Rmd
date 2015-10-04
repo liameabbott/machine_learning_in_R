@@ -133,6 +133,7 @@ df_temp = data.frame(matrix(c(NA, 'x', 'x', NA, NA, NA,
                        NA, 'x', NA, NA, NA, NA),
                      nrow=13, ncol=6, byrow=TRUE))
 colnames(df_temp) = c('Factor1', 'Factor2', 'Factor3', 'Factor4', 'Factor5', 'Factor6')
+rownames(df_temp) = colnames(wine)
 xtable_temp = xtable(df_temp)
 align(xtable_temp) = c('l', rep('c', 6))
 print(xtable_temp, type='html', sanitize.colnames.function = function(x) gsub('r', 'r\ ', x))
